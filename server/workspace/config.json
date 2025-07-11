@@ -1,0 +1,35 @@
+{
+  "workspace": {
+    "name": "Collaborative Editor Workspace",
+    "description": "A shared workspace for collaborative editing",
+    "defaultRoom": "demo",
+    "features": {
+      "realTimeEditing": true,
+      "userPresence": true,
+      "fileManagement": true,
+      "conflictResolution": true
+    },
+    "supportedLanguages": [
+      "typescript",
+      "javascript", 
+      "python",
+      "markdown",
+      "json",
+      "css",
+      "html",
+      "yaml",
+      "xml",
+      "sql"
+    ],
+    "maxFileSize": "10MB",
+    "maxFilesPerRoom": 50
+  },
+  "server": {
+    "port": 1234,
+    "corsOrigins": ["http://localhost:5173"],
+    "websocket": {
+      "pingInterval": 30000,
+      "compression": true
+    }
+  }
+} 

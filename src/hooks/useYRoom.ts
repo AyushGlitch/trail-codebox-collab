@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { useEffect, useMemo, useState } from 'react';
 import { deduplicateFiles } from '../utils/deduplicate';
+import { WorkspaceService } from '../services/workspaceService';
 
 export interface FileItem {
   id: string;
@@ -35,14 +36,14 @@ export function useYRoom(roomId: string) {
     };
   }, [doc, roomId]);
 
-  // Initialize default files if empty (only once per room)
+  // Initialize files from workspace folder (only once per room)
   useEffect(() => {
     if (!isConnected || !provider) return;
 
     const fileList = doc.getArray<FileItem>('files');
     
     // Use a timeout to ensure the document has fully synced
-    const initTimeout = setTimeout(() => {
+    const initTimeout = setTimeout(async () => {
       // First, remove any duplicate files that might exist
       deduplicateFiles(doc);
       
@@ -52,31 +53,36 @@ export function useYRoom(roomId: string) {
         const initMarker = doc.getText('__init_marker__');
         
         if (initMarker.length === 0) {
-          doc.transact(() => {
-            // Set the marker first to prevent other clients from initializing
-            initMarker.insert(0, 'initialized');
+          try {
+            // Fetch workspace files from server
+            const workspaceFiles = await WorkspaceService.getWorkspaceFiles();
             
-            fileList.push([
-              { id: 'index.ts', name: 'index.ts', language: 'typescript' },
-              { id: 'utils.ts', name: 'utils.ts', language: 'typescript' },
-              { id: 'README.md', name: 'README.md', language: 'markdown' }
-            ]);
+            doc.transact(() => {
+              // Set the marker first to prevent other clients from initializing
+              initMarker.insert(0, 'initialized');
+              
+              // Add file metadata to the file list
+              const fileItems: FileItem[] = workspaceFiles.map(file => ({
+                id: file.id,
+                name: file.name,
+                language: file.language
+              }));
+              
+              fileList.push(fileItems);
+              
+              // Initialize file contents from workspace
+              workspaceFiles.forEach(file => {
+                const yText = doc.getText(file.id);
+                if (yText.length === 0) {
+                  yText.insert(0, file.content);
+                }
+              });
+            });
             
-            // Initialize file contents only if they're empty
-            const indexText = doc.getText('index.ts');
-            const utilsText = doc.getText('utils.ts');
-            const readmeText = doc.getText('README.md');
-            
-            if (indexText.length === 0) {
-              indexText.insert(0, '// Welcome to collaborative editing!\nconsole.log("Hello, world!");');
-            }
-            if (utilsText.length === 0) {
-              utilsText.insert(0, '// Utility functions\nexport function helper() {\n  return "Hello from utils!";\n}');
-            }
-            if (readmeText.length === 0) {
-              readmeText.insert(0, '# Collaborative Editor\n\nEdit this file with your team!');
-            }
-          });
+            console.log(`Initialized ${workspaceFiles.length} files from workspace`);
+          } catch (error) {
+            console.error('Failed to initialize workspace files:', error);
+          }
         }
       }
     }, 100); // Small delay to allow for document synchronization
