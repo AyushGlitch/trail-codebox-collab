@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, FileText, X, Folder, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { getIconForFile, getIconForFolder, getIconForOpenFolder } from 'vscode-icons-js';
 import * as Y from 'yjs';
 import { FileItem } from '../hooks/useYRoom';
 
@@ -170,34 +171,35 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
   const renderFolderNode = (node: FolderNode, depth: number = 0): JSX.Element[] => {
     const elements: JSX.Element[] = [];
 
-    // Render folder header (skip for root)
     if (node.name) {
       const isExpanded = expandedFolders.has(node.path);
+      const folderIcon = isExpanded ? getIconForOpenFolder(node.name) : getIconForFolder(node.name);
+      
       elements.push(
         <div
           key={`folder-${node.path}`}
           onClick={() => toggleFolder(node.path)}
-          className="flex items-center gap-1 p-1 hover:bg-gray-700 cursor-pointer rounded"
+          className="flex items-center gap-2 p-1 hover:bg-gray-700 cursor-pointer rounded"
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          {isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
+          <img 
+            src={`https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/${folderIcon}`}
+            alt="folder"
+            className="w-4 h-4"
+          />
           <span className="text-sm">{node.name}</span>
         </div>
       );
     }
 
-    // Render children if expanded
     if (expandedFolders.has(node.path)) {
-      // Render subfolders
       node.children.forEach(child => {
         elements.push(...renderFolderNode(child, depth + 1));
       });
 
-      // Render files
       node.files.forEach(file => {
-        const fullFileId = node.path ? `${node.path}/${file.name}` : file.name;
-        const originalFile = files.find(f => f.id === file.id);
+        const fileIcon = getIconForFile(file.name);
         
         elements.push(
           <div
@@ -209,7 +211,11 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
             style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
           >
             <div className="flex items-center gap-2">
-              <FileText size={14} />
+              <img 
+                src={`https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/${fileIcon}`}
+                alt="file"
+                className="w-4 h-4"
+              />
               <span className="text-sm">{file.name}</span>
             </div>
             {files.length > 1 && (
