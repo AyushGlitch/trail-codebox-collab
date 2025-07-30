@@ -19,31 +19,7 @@ export class WorkspaceService {
       return files;
     } catch (error) {
       console.error('Error fetching workspace files:', error);
-      // Return default files if server is not available
-      return this.getDefaultFiles();
+      return [];
     }
-  }
-
-  private static getDefaultFiles(): WorkspaceFile[] {
-    return [
-      {
-        id: 'index.ts',
-        name: 'index.ts',
-        language: 'typescript',
-        content: '// Welcome to collaborative editing!\nconsole.log("Hello, world!");'
-      },
-      {
-        id: 'utils.ts',
-        name: 'utils.ts',
-        language: 'typescript',
-        content: '// Utility functions\nexport function helper() {\n  return "Hello from utils!";\n}'
-      },
-      {
-        id: 'README.md',
-        name: 'README.md',
-        language: 'markdown',
-        content: '# Collaborative Editor\n\nEdit this file with your team!'
-      }
-    ];
   }
 } 

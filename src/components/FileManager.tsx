@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, FileText, X } from 'lucide-react';
+import { Plus, FileText, X, Folder, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
 import * as Y from 'yjs';
 import { FileItem } from '../hooks/useYRoom';
 
@@ -9,10 +9,19 @@ interface Props {
   onFileSelect: (fileId: string) => void;
 }
 
+interface FolderNode {
+  name: string;
+  path: string;
+  isExpanded: boolean;
+  children: FolderNode[];
+  files: FileItem[];
+}
+
 export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [newFileName, setNewFileName] = useState('');
   const [showAddFile, setShowAddFile] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([''])); // Root is expanded by default
 
   useEffect(() => {
     const fileList = ydoc.getArray<FileItem>('files');
@@ -29,13 +38,85 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
     };
   }, [ydoc]);
 
+  const buildFolderTree = (files: FileItem[]): FolderNode => {
+    const root: FolderNode = {
+      name: '',
+      path: '',
+      isExpanded: true,
+      children: [],
+      files: []
+    };
+
+    const folderMap = new Map<string, FolderNode>();
+    folderMap.set('', root);
+
+    files.forEach(file => {
+      const pathParts = file.name.split('/');
+      const fileName = pathParts.pop()!;
+      const folderPath = pathParts.join('/');
+
+      // Create folder hierarchy
+      let currentPath = '';
+      let currentFolder = root;
+
+      pathParts.forEach(folderName => {
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+
+        if (!folderMap.has(currentPath)) {
+          const newFolder: FolderNode = {
+            name: folderName,
+            path: currentPath,
+            isExpanded: expandedFolders.has(currentPath),
+            children: [],
+            files: []
+          };
+
+          folderMap.set(currentPath, newFolder);
+          currentFolder.children.push(newFolder);
+        }
+
+        currentFolder = folderMap.get(currentPath)!;
+      });
+
+      // Add file to its folder
+      const fileWithPath: FileItem = {
+        ...file,
+        id: file.id,
+        name: fileName
+      };
+      currentFolder.files.push(fileWithPath);
+    });
+
+    // Sort folders and files
+    const sortNode = (node: FolderNode) => {
+      node.children.sort((a, b) => a.name.localeCompare(b.name));
+      node.files.sort((a, b) => a.name.localeCompare(b.name));
+      node.children.forEach(sortNode);
+    };
+
+    sortNode(root);
+    return root;
+  };
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderPath)) {
+        newSet.delete(folderPath);
+      } else {
+        newSet.add(folderPath);
+      }
+      return newSet;
+    });
+  };
+
   const addFile = () => {
     if (!newFileName.trim()) return;
 
     const fileList = ydoc.getArray<FileItem>('files');
     const fileId = newFileName.replace(/\s+/g, '-').toLowerCase();
     
-    // Determine language from extension
     const getLanguage = (filename: string) => {
       const ext = filename.split('.').pop()?.toLowerCase();
       switch (ext) {
@@ -75,10 +156,8 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
     if (index !== -1) {
       ydoc.transact(() => {
         fileList.delete(index, 1);
-        // Note: Y.Text for the file remains in memory but won't be accessible
       });
       
-      // Switch to first available file if we deleted the active one
       if (fileId === activeFileId && files.length > 1) {
         const remainingFiles = files.filter(f => f.id !== fileId);
         if (remainingFiles.length > 0) {
@@ -87,6 +166,69 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
       }
     }
   };
+
+  const renderFolderNode = (node: FolderNode, depth: number = 0): JSX.Element[] => {
+    const elements: JSX.Element[] = [];
+
+    // Render folder header (skip for root)
+    if (node.name) {
+      const isExpanded = expandedFolders.has(node.path);
+      elements.push(
+        <div
+          key={`folder-${node.path}`}
+          onClick={() => toggleFolder(node.path)}
+          className="flex items-center gap-1 p-1 hover:bg-gray-700 cursor-pointer rounded"
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        >
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
+          <span className="text-sm">{node.name}</span>
+        </div>
+      );
+    }
+
+    // Render children if expanded
+    if (expandedFolders.has(node.path)) {
+      // Render subfolders
+      node.children.forEach(child => {
+        elements.push(...renderFolderNode(child, depth + 1));
+      });
+
+      // Render files
+      node.files.forEach(file => {
+        const fullFileId = node.path ? `${node.path}/${file.name}` : file.name;
+        const originalFile = files.find(f => f.id === file.id);
+        
+        elements.push(
+          <div
+            key={`file-${file.id}`}
+            onClick={() => onFileSelect(file.id)}
+            className={`flex items-center justify-between p-2 rounded cursor-pointer group ${
+              activeFileId === file.id ? 'bg-blue-600' : 'hover:bg-gray-700'
+            }`}
+            style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+          >
+            <div className="flex items-center gap-2">
+              <FileText size={14} />
+              <span className="text-sm">{file.name}</span>
+            </div>
+            {files.length > 1 && (
+              <button
+                onClick={(e) => deleteFile(file.id, e)}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        );
+      });
+    }
+
+    return elements;
+  };
+
+  const folderTree = buildFolderTree(files);
 
   return (
     <div className="w-64 bg-gray-900 text-white p-4 flex flex-col">
@@ -106,7 +248,7 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
             type="text"
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}
-            placeholder="filename.ts"
+            placeholder="folder/filename.ts"
             className="w-full p-2 bg-gray-800 rounded text-sm"
             onKeyPress={(e) => e.key === 'Enter' && addFile()}
             autoFocus
@@ -129,28 +271,7 @@ export default function FileManager({ ydoc, activeFileId, onFileSelect }: Props)
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {files.map((file) => (
-          <div
-            key={file.id}
-            onClick={() => onFileSelect(file.id)}
-            className={`flex items-center justify-between p-2 rounded cursor-pointer group ${
-              activeFileId === file.id ? 'bg-blue-600' : 'hover:bg-gray-700'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <FileText size={16} />
-              <span className="text-sm">{file.name}</span>
-            </div>
-            {files.length > 1 && (
-              <button
-                onClick={(e) => deleteFile(file.id, e)}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        ))}
+        {renderFolderNode(folderTree)}
       </div>
     </div>
   );
